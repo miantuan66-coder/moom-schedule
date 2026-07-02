@@ -9,6 +9,8 @@
 - `index.html`
 - `style.css`
 - `README.md`
+- `AUTO_EMAIL_SETUP.md`
+- `apps-script/Code.gs`
 - `.nojekyll`
 
 ## GitHub Pages

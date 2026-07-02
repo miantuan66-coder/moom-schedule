@@ -89,8 +89,8 @@
             预约内容
             <textarea id="bookingMessage" name="预约内容" rows="4" placeholder="请简单写一下想预约的内容"></textarea>
           </label>
-          <button class="submit-button" type="submit">生成预约信息</button>
-          <p class="privacy-note">生成后可以复制预约信息，或打开 Gmail 网页版手动发送。</p>
+          <button class="submit-button" type="submit">提交预约申请</button>
+          <p class="privacy-note">预约信息只用于通知 MooM，不会公开显示在网页上。</p>
           <p id="formStatus" class="form-status" aria-live="polite"></p>
         </form>
 
@@ -99,7 +99,7 @@
           <textarea id="bookingOutput" readonly rows="8"></textarea>
           <div class="result-actions">
             <button id="copyBooking" class="secondary-button" type="button">复制预约信息</button>
-            <a id="gmailLink" class="secondary-button primary-link" href="#" target="_blank" rel="noopener">打开 Gmail 发送</a>
+            <a id="gmailLink" class="secondary-button primary-link" href="#" target="_blank" rel="noopener">备用：打开 Gmail 发送</a>
           </div>
         </div>
       </section>
@@ -126,6 +126,7 @@
       const copyBooking = document.querySelector("#copyBooking");
       const gmailLink = document.querySelector("#gmailLink");
       const NOTIFY_EMAIL = "shunyoutou@gmail.com";
+      const BOOKING_API_URL = "";
       const timeSlots = ["09:00", "10:00", "11:00", "13:00", "14:00", "15:00", "16:00", "17:00"];
       const weekNames = ["周日", "周一", "周二", "周三", "周四", "周五", "周六"];
 
@@ -203,33 +204,80 @@
 
       buildSchedule();
 
-      bookingForm.addEventListener("submit", (event) => {
-        event.preventDefault();
+      function buildBookingPayload() {
+        return {
+          date: bookingDate.value,
+          time: bookingTime.value,
+          name: guestName.value.trim(),
+          contact: guestContact.value.trim(),
+          message: bookingMessage.value.trim() || "未填写",
+          page: window.location.href,
+        };
+      }
 
-        const subject = `MooM预约申请：${bookingDate.value} ${bookingTime.value}`;
-        const body = [
+      function buildBookingText(payload) {
+        return [
           "收到新的预约申请：",
           "",
-          `日期：${bookingDate.value}`,
-          `时间：${bookingTime.value}`,
-          `预约人：${guestName.value}`,
-          `联系方式：${guestContact.value}`,
-          `预约内容：${bookingMessage.value || "未填写"}`,
+          `日期：${payload.date}`,
+          `时间：${payload.time}`,
+          `预约人：${payload.name}`,
+          `联系方式：${payload.contact}`,
+          `预约内容：${payload.message}`,
           "",
           "请及时确认预约。",
         ].join("\n");
+      }
+
+      function buildGmailUrl(subject, body) {
         const gmailUrl = new URL("https://mail.google.com/mail/");
         gmailUrl.searchParams.set("view", "cm");
         gmailUrl.searchParams.set("fs", "1");
         gmailUrl.searchParams.set("to", NOTIFY_EMAIL);
         gmailUrl.searchParams.set("su", subject);
         gmailUrl.searchParams.set("body", body);
+        return gmailUrl.toString();
+      }
 
+      function showBackupResult(body, gmailUrl) {
         bookingOutput.value = body;
-        gmailLink.href = gmailUrl.toString();
+        gmailLink.href = gmailUrl;
         bookingResult.hidden = false;
-        formStatus.textContent = "预约信息已生成。请复制信息，或打开 Gmail 后手动点击发送。";
         bookingResult.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+
+      bookingForm.addEventListener("submit", async (event) => {
+        event.preventDefault();
+
+        const payload = buildBookingPayload();
+        const subject = `MooM预约申请：${payload.date} ${payload.time}`;
+        const body = buildBookingText(payload);
+        const gmailUrl = buildGmailUrl(subject, body);
+
+        if (!BOOKING_API_URL) {
+          showBackupResult(body, gmailUrl);
+          formStatus.textContent = "自动邮件通知还没有配置。请先设置 Google Apps Script；现在可以使用下面的备用发送方式。";
+          return;
+        }
+
+        formStatus.textContent = "正在提交预约申请...";
+
+        try {
+          await fetch(BOOKING_API_URL, {
+            method: "POST",
+            mode: "no-cors",
+            headers: {
+              "Content-Type": "text/plain;charset=utf-8",
+            },
+            body: JSON.stringify(payload),
+          });
+          bookingForm.reset();
+          bookingResult.hidden = true;
+          formStatus.textContent = "预约申请已提交。MooM 会收到邮件通知。";
+        } catch (error) {
+          showBackupResult(body, gmailUrl);
+          formStatus.textContent = "自动通知暂时失败。请复制预约信息，或用备用 Gmail 方式发送。";
+        }
       });
 
       copyBooking.addEventListener("click", async () => {
